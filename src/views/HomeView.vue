@@ -89,6 +89,24 @@
 			</DataTable>
 		</CCol>
 	</CRow>
+	<CRow>
+		<h1>Yüksek Kargo Maliyetli Ürünler</h1>
+		<CCol :xs="12">
+			<DataTable :data="processedUpperSixCargoData" class="table table-striped table-bordered display">
+				<thead>
+					<tr>
+						<th>Model Kodu</th>
+						<th>Adet</th>
+						<th>USD Fabrika</th>
+						<th>USD Kargo Maliyet</th>
+						<th>USD Maliyet</th>
+						<th>USD Satış</th>
+						<th>USD Fark</th>
+					</tr>
+				</thead>
+			</DataTable>
+		</CCol>
+	</CRow>
 </template>
 
 <script lang="ts">
@@ -115,6 +133,7 @@ export default {
 			branchId: 0,
 			products: null,
 			zeroCostProducts: null,
+			upperSixCargoData: null,
 			branches: this.getBranches(),
 			cardsData: {
 				"dollarRate": 0,
@@ -169,6 +188,7 @@ export default {
 
 				const processedData = []
 				const processedZeroCostData = []
+				const processedUpperSixCargoData = []
 
 				let endorsement = 0;
 				let cost = 0;
@@ -180,6 +200,7 @@ export default {
 	
 				for (let element of Object.values(data)) {
 					const elementProfit = (parseFloat(element.sale_price) - parseFloat(element.total_maliyet)).toFixed(2);
+
 					let profitString = "";
 					if(elementProfit >= 0){
 						profitString = `<span style="color: green;">${elementProfit}</span>`;
@@ -190,6 +211,18 @@ export default {
 
 					if(parseFloat(element.total_maliyet) <= 0){
 						processedZeroCostData.push([
+							element.model_code,
+							element.qty,
+							element.fab_maliyet.toFixed(2),
+							element.cargo_maliyet.toFixed(2),
+							element.total_maliyet.toFixed(2),
+							element.sale_price.toFixed(2),
+							profitString
+						])
+
+						continue;
+					}else if(parseFloat(element.cargo_maliyet) >= 6){
+						processedUpperSixCargoData.push([
 							element.model_code,
 							element.qty,
 							element.fab_maliyet.toFixed(2),
