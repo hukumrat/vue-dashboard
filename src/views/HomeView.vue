@@ -6,7 +6,7 @@
 		<CCol :xs="3">
 			<select v-model="branchId" class="form-select" aria-label="Default select example">
 				<option value="0">Şube seçiniz</option>
-				<option v-for="branch in branches" :value="branch.id">{{ branch.name }}</option>
+				<option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
 			</select>
 		</CCol>
 		<CCol :xs="3">
@@ -17,39 +17,39 @@
 		<CCol :xs="3">
 			<CWidgetStatsB class="mb-3">
 				<template #title>Dolar Kuru</template>
-				<template #value>{{ this.cardsData.dollarRate }} PLN</template>
+				<template #value>{{ cardsData.dollarRate }} PLN</template>
 			</CWidgetStatsB>
 		</CCol>
 		<CCol :xs="3">
 			<CWidgetStatsB class="mb-3">
 				<template #title>Ciro</template>
-				<template #value>{{ this.cardsData.endorsement }} $</template>
+				<template #value>{{ cardsData.endorsement }} $</template>
 			</CWidgetStatsB>
 		</CCol>
 		<CCol :xs="3">
 			<CWidgetStatsB class="mb-3">
 				<template #title>Maliyet</template>
-				<template #value>{{ this.cardsData.cost }} $</template>
+				<template #value>{{ cardsData.cost }} $</template>
 			</CWidgetStatsB>
 		</CCol>
 		<CCol :xs="3">
 			<CWidgetStatsB class="mb-3">
 				<template #title>Net Kâr</template>
-				<template #value><span v-bind:style=" this.cardsData.profit > 0 ? 'color: green;' : 'color: red;'">{{ this.cardsData.profit }} $</span></template>
+				<template #value><span v-bind:style=" cardsData.profit > 0 ? 'color: green;' : 'color: red;'">{{ cardsData.profit }} $</span></template>
 			</CWidgetStatsB>
 		</CCol>
 		<CCol :xs="3">
 			<CWidgetStatsB class="mb-3">
-				<template #text>{{ this.cardsData.totalProfit }} $</template>
+				<template #text>{{ cardsData.totalProfit }} $</template>
 				<template #title>Kâr Eden Model Sayısı</template>
-				<template #value><span style="color: green;">{{ this.cardsData.profitCounter }}</span> </template>
+				<template #value><span style="color: green;">{{ cardsData.profitCounter }}</span> </template>
 			</CWidgetStatsB>
 		</CCol>
 		<CCol :xs="3">
 			<CWidgetStatsB class="mb-3">
-				<template #text>{{ this.cardsData.totalLoss }} $</template>
+				<template #text>{{ cardsData.totalLoss }} $</template>
 				<template #title>Zarar Eden Model Sayısı</template>
-				<template #value><span style="color: red;">{{ this.cardsData.lossCounter }}</span> </template>
+				<template #value><span style="color: red;">{{ cardsData.lossCounter }}</span> </template>
 			</CWidgetStatsB>
 		</CCol>
 	</CRow>
@@ -92,7 +92,7 @@
 	<CRow>
 		<h1>Yüksek Kargo Maliyetli Ürünler</h1>
 		<CCol :xs="12">
-			<DataTable :data="processedUpperSixCargoData" class="table table-striped table-bordered display">
+			<DataTable :data="upperSixCargoProducts" class="table table-striped table-bordered display">
 				<thead>
 					<tr>
 						<th>Model Kodu</th>
@@ -112,29 +112,36 @@
 <script lang="ts">
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
-import axios, { AxiosResponse, AxiosError } from 'axios';
+import axios from 'axios';
+import type { AxiosResponse } from 'axios';
 import DataTable from 'datatables.net-vue3';
 import DataTableLib from 'datatables.net-bs5';
-import Buttons from 'datatables.net-buttons-bs5';
-import ButtonsHtml5 from 'datatables.net-buttons/js/buttons.html5';
-import pdfmake from 'pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
 import 'datatables.net-responsive-bs5';
-import JsZip from 'jszip';
 
 DataTable.use(DataTableLib);
-DataTable.use(pdfmake);
-DataTable.use(ButtonsHtml5);
+
+interface DataElement {
+  sale_price: string;
+  total_maliyet: string;
+  model_code: string;
+  qty: number;
+  fab_maliyet: number;
+  cargo_maliyet: number;
+}
+
+interface DataObject {
+  usd_rate: number
+}
 
 export default {
 	data() {
 		return {
-			date: {},
-			branchId: 0,
-			products: null,
-			zeroCostProducts: null,
-			upperSixCargoData: null,
-			branches: this.getBranches(),
+			date: {} as any,
+			branchId: 0 as any,
+			products: null as any,
+			zeroCostProducts: null as any,
+			upperSixCargoProducts: null as any,
+			branches: this.getBranches() as any,
 			cardsData: {
 				"dollarRate": 0,
 				"endorsement": 0,
@@ -144,8 +151,7 @@ export default {
 				"totalProfit": 0,
 				"lossCounter": 0,
 				"totalLoss": 0
-			},
-			
+			} as any,
 		}
 	},
 	components: {
@@ -184,7 +190,7 @@ export default {
 				const response: AxiosResponse = await axios.post('https://app.sabra.com.pl/api/hukumdar/get/model_stats', postData);
 				const data = response.data;
 
-				const dataObject = Object.values(data)
+				const dataObject = Object.values(data) as unknown as DataObject
 
 				const processedData = []
 				const processedZeroCostData = []
@@ -198,11 +204,11 @@ export default {
 				let totalProfit = 0;
 				let totalLoss = 0;
 	
-				for (let element of Object.values(data)) {
+				for (let element of Object.values<DataElement>(data)) {
 					const elementProfit = (parseFloat(element.sale_price) - parseFloat(element.total_maliyet)).toFixed(2);
 
 					let profitString = "";
-					if(elementProfit >= 0){
+					if(parseFloat(elementProfit) >= 0){
 						profitString = `<span style="color: green;">${elementProfit}</span>`;
 					}
 					else{
@@ -215,24 +221,22 @@ export default {
 							element.qty,
 							element.fab_maliyet.toFixed(2),
 							element.cargo_maliyet.toFixed(2),
-							element.total_maliyet.toFixed(2),
-							element.sale_price.toFixed(2),
+							parseFloat(element.total_maliyet).toFixed(2),
+							parseFloat(element.sale_price).toFixed(2),
 							profitString
 						])
 
 						continue;
-					}else if(parseFloat(element.cargo_maliyet) >= 6){
+					}else if(element.cargo_maliyet >= 6){
 						processedUpperSixCargoData.push([
 							element.model_code,
 							element.qty,
 							element.fab_maliyet.toFixed(2),
 							element.cargo_maliyet.toFixed(2),
-							element.total_maliyet.toFixed(2),
-							element.sale_price.toFixed(2),
+							parseFloat(element.total_maliyet).toFixed(2),
+							parseFloat(element.sale_price).toFixed(2),
 							profitString
 						])
-
-						continue;
 					}
 					else{
 						processedData.push([
@@ -240,30 +244,30 @@ export default {
 							element.qty,
 							element.fab_maliyet.toFixed(2),
 							element.cargo_maliyet.toFixed(2),
-							element.total_maliyet.toFixed(2),
-							element.sale_price.toFixed(2),
+							parseFloat(element.total_maliyet).toFixed(2),
+							parseFloat(element.sale_price).toFixed(2),
 							profitString
 						])
 					}
 					
 					
-					endorsement += parseFloat(element.sale_price) * parseFloat(element.qty);
-					cost += parseFloat(element.total_maliyet) * parseFloat(element.qty);
-					profit += parseFloat(elementProfit) * parseFloat(element.qty)
+					endorsement += parseFloat(element.sale_price) * element.qty;
+					cost += parseFloat(element.total_maliyet) * element.qty;
+					profit += parseFloat(elementProfit) * element.qty
 				
 					if (parseFloat(elementProfit) > 0) {
 						profitCounter += 1
-						totalProfit += parseFloat(elementProfit) * parseFloat(element.qty)
+						totalProfit += parseFloat(elementProfit) * element.qty
 					}
 					else {
 						lossCounter += 1
-						totalLoss += parseFloat(elementProfit) * parseFloat(element.qty)
+						totalLoss += parseFloat(elementProfit) * element.qty
 					}
 
 				}
 
 				const cardsData = {
-					"dollarRate": dataObject[0] === undefined ? '' : dataObject[0].usd_rate,
+					"dollarRate": Array.isArray(dataObject) && dataObject.length > 0 ? dataObject[0].usd_rate : '',
 					"endorsement": endorsement.toFixed(2),
 					"cost": cost.toFixed(2),
 					"profit": profit.toFixed(2),
@@ -277,8 +281,9 @@ export default {
 
 				this.products = processedData
 				this.zeroCostProducts = processedZeroCostData
+				this.upperSixCargoProducts = processedUpperSixCargoData
 
-			} catch (error: AxiosError) {
+			} catch (error: any) {
 				if (axios.isAxiosError(error)) {
 					console.error('Axios Error:', error.message);
 					console.error('Status Code:', error.response?.status);
