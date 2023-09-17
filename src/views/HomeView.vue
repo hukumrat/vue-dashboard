@@ -11,6 +11,7 @@
 		</CCol>
 		<CCol :xs="3">
 			<CButton @click="fetchData" style="color: white;" color="info">Getir</CButton>
+			<CButton @click="exportToPDF" style="color: white; float: right;" color="info">Export to PDF</CButton>
 		</CCol>
 	</CRow>
 	<CRow>
@@ -35,7 +36,8 @@
 		<CCol :xs="3">
 			<CWidgetStatsB class="mb-3">
 				<template #title>Net Kâr</template>
-				<template #value><span v-bind:style=" cardsData.profit > 0 ? 'color: green;' : 'color: red;'">{{ cardsData.profit }} $</span></template>
+				<template #value><span v-bind:style="cardsData.profit > 0 ? 'color: green;' : 'color: red;'">{{
+					cardsData.profit }} $</span></template>
 			</CWidgetStatsB>
 		</CCol>
 		<CCol :xs="3">
@@ -117,20 +119,27 @@ import type { AxiosResponse } from 'axios';
 import DataTable from 'datatables.net-vue3';
 import DataTableLib from 'datatables.net-bs5';
 import 'datatables.net-responsive-bs5';
+import * as pdfMake from "pdfmake/build/pdfmake";
+import * as pdfFonts from 'pdfmake/build/vfs_fonts';
+
+import type { TDocumentDefinitions } from 'pdfmake/interfaces';
+
+(<any>pdfMake).vfs = pdfFonts.pdfMake.vfs;
+
 
 DataTable.use(DataTableLib);
 
 interface DataElement {
-  sale_price: string;
-  total_maliyet: string;
-  model_code: string;
-  qty: number;
-  fab_maliyet: number;
-  cargo_maliyet: number;
+	sale_price: string;
+	total_maliyet: string;
+	model_code: string;
+	qty: number;
+	fab_maliyet: number;
+	cargo_maliyet: number;
 }
 
 interface DataObject {
-  usd_rate: number
+	usd_rate: number
 }
 
 export default {
@@ -139,6 +148,7 @@ export default {
 			date: {} as any,
 			branchId: 0 as any,
 			products: null as any,
+			processedData: null as any,
 			zeroCostProducts: null as any,
 			upperSixCargoProducts: null as any,
 			branches: this.getBranches() as any,
@@ -164,6 +174,69 @@ export default {
 		this.date = [startDate, endDate];
 	},
 	methods: {
+		exportToPDF() {
+			let productsData = this.processedData.sort((a: any, b: any) => b[1] - a[1]);
+
+			function stripHtml(html: string) {
+				const tempElement = document.createElement('div');
+				tempElement.innerHTML = html;
+				return tempElement.textContent || tempElement.innerText || '';
+			}
+
+			productsData = productsData.map((product: any) => {
+				const textInLastColumn = stripHtml(product[6]);
+				return [
+					product[0],
+					product[1],
+					product[2],
+					product[3],
+					product[4],
+					product[5],
+					textInLastColumn,
+				];
+			});
+
+			const docDefinition: TDocumentDefinitions = {
+				content: [
+					{
+						ul: [
+							`Dolar kuru: ${this.cardsData.dollarRate} PLN`,
+							`Ciro: ${this.cardsData.endorsement}`,
+							`Maliyet: ${this.cardsData.cost}`,
+							`Net Kâr: ${this.cardsData.profit}`,
+							`Kâr Eden Model Sayısı: ${this.cardsData.profitCounter} (${this.cardsData.totalProfit}$)`,
+							`Zarar Eden Model Sayısı: ${this.cardsData.lossCounter} (${this.cardsData.totalLoss}$)`,
+						]
+					},
+					{ text: "Maliyetli Ürünler", style: "header" },
+					{
+						table: {
+							headerRows: 1, 
+							widths: ['auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+							body: [           
+								["Model Kodu",
+								"Adet",
+								"Fabrika Maliyeti($)",
+								"Kargo Maliyeti($)",
+								"Net Maliyet($)",
+								"Satış Fiyatı($)",
+								"Net Kâr/Zarar($)"],
+								...productsData.slice(1) 
+							]
+						}
+					}
+				],
+				styles: {
+					header: {
+						fontSize: 18,
+						bold: true,
+						margin: [0, 0, 0, 10]
+					}
+				}
+			};
+
+			pdfMake.createPdf(docDefinition).download("Maliyetli Ürünler Listesi.pdf");
+		},
 		convertDate(dateString: string) {
 			const date = new Date(dateString);
 			const day = String(date.getDate()).padStart(2, '0');
@@ -174,7 +247,7 @@ export default {
 
 			return formattedDate;
 		},
-		async getBranches(){
+		async getBranches() {
 			const response = await axios.get('https://app.sabra.com.pl/api/hukumdar/get/branchs');
 
 			this.branches = response.data;
@@ -192,9 +265,18 @@ export default {
 
 				const dataObject = Object.values(data) as unknown as DataObject
 
-				const processedData = []
-				const processedZeroCostData = []
-				const processedUpperSixCargoData = []
+				const processedData: string[][] = [];
+				processedData.push([
+					"Model Kodu",
+					"Adet",
+					"Fabrika Maliyeti($)",
+					"Kargo Maliyeti($)",
+					"Net Maliyet($)",
+					"Satış Fiyatı($)",
+					"Net Kâr/Zarar($)"
+				])
+				const processedZeroCostData: string[][] = [];
+				const processedUpperSixCargoData: string[][] = [];
 
 				let endorsement = 0;
 				let cost = 0;
@@ -203,22 +285,22 @@ export default {
 				let lossCounter = 0;
 				let totalProfit = 0;
 				let totalLoss = 0;
-	
+
 				for (let element of Object.values<DataElement>(data)) {
 					const elementProfit = (parseFloat(element.sale_price) - parseFloat(element.total_maliyet)).toFixed(2);
 
 					let profitString = "";
-					if(parseFloat(elementProfit) >= 0){
+					if (parseFloat(elementProfit) >= 0) {
 						profitString = `<span style="color: green;">${elementProfit}</span>`;
 					}
-					else{
+					else {
 						profitString = `<span style="color: red;">${elementProfit}</span>`;
 					}
 
-					if(parseFloat(element.total_maliyet) <= 0){
+					if (parseFloat(element.total_maliyet) <= 0) {
 						processedZeroCostData.push([
 							element.model_code,
-							element.qty,
+							element.qty.toString(),
 							element.fab_maliyet.toFixed(2),
 							element.cargo_maliyet.toFixed(2),
 							parseFloat(element.total_maliyet).toFixed(2),
@@ -227,10 +309,10 @@ export default {
 						])
 
 						continue;
-					}else if(element.cargo_maliyet >= 6){
+					} else if (element.cargo_maliyet >= 6) {
 						processedUpperSixCargoData.push([
 							element.model_code,
-							element.qty,
+							element.qty.toString(),
 							element.fab_maliyet.toFixed(2),
 							element.cargo_maliyet.toFixed(2),
 							parseFloat(element.total_maliyet).toFixed(2),
@@ -238,10 +320,10 @@ export default {
 							profitString
 						])
 					}
-					else{
+					else {
 						processedData.push([
 							element.model_code,
-							element.qty,
+							element.qty.toString(),
 							element.fab_maliyet.toFixed(2),
 							element.cargo_maliyet.toFixed(2),
 							parseFloat(element.total_maliyet).toFixed(2),
@@ -249,12 +331,12 @@ export default {
 							profitString
 						])
 					}
-					
-					
+
+
 					endorsement += parseFloat(element.sale_price) * element.qty;
 					cost += parseFloat(element.total_maliyet) * element.qty;
 					profit += parseFloat(elementProfit) * element.qty
-				
+
 					if (parseFloat(elementProfit) > 0) {
 						profitCounter += 1
 						totalProfit += parseFloat(elementProfit) * element.qty
@@ -276,9 +358,10 @@ export default {
 					"lossCounter": lossCounter,
 					"totalLoss": totalLoss.toFixed(2)
 				}
-				
+
 				this.cardsData = cardsData;
 
+				this.processedData = processedData
 				this.products = processedData
 				this.zeroCostProducts = processedZeroCostData
 				this.upperSixCargoProducts = processedUpperSixCargoData
@@ -297,5 +380,5 @@ export default {
 </script>
 
 <style>
-	@import 'datatables.net-dt';
+@import 'datatables.net-dt';
 </style>
